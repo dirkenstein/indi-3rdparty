@@ -328,8 +328,11 @@ bool NightscapeCCD::initProperties()
         cap |= CCD_HAS_BAYER;
         IUSaveText(&BayerT[0], "0");
         IUSaveText(&BayerT[1], "0");
-        IUSaveText(&BayerT[2], "BGGR");
-
+        if (cn->getCamType() == kai10100 && dn->getBinning() == 1) {
+            IUSaveText(&BayerT[2], "GRBG");
+        } else {
+            IUSaveText(&BayerT[2], "BGGR");
+        }
     }
     SetCCDCapability(cap);
 
@@ -438,7 +441,7 @@ bool NightscapeCCD::StartExposure(float duration)
     m->sendzone(zonestart, zonelen, framediv);
     INDI::CCDChip::CCD_FRAME ft = PrimaryCCD.getFrameType();
     dark = (ft == INDI::CCDChip::DARK_FRAME || ft == INDI::CCDChip::BIAS_FRAME);
-
+    DO_DBG("starting exposure %4.3f starty: %d leny: %d biny: %d imgsiz: %zu\n", duration, zonestart, zonelen, framediv, dn->getBufImageSize());
     m->senddur(duration, framediv, dark);
     InExposure = true;
     // We're done
@@ -632,7 +635,6 @@ void NightscapeCCD::grabImage()
     uint8_t * downbuf = dn->getBuf();
     size_t downsz = dn->getBufImageSize();
     LOGF_DEBUG("image (%p) size %ld buf %p bufsize %d", image, downsz, downbuf, dn->getBufSize());
-    DO_DBG("image (%p) size %ld buf %p bufsize %d\n", image, downsz, downbuf, dn->getBufSize());
     // Get width and height
     //int width  = PrimaryCCD.getSubW() / PrimaryCCD.getBinX() * PrimaryCCD.getBPP() / 8;
     //int height = PrimaryCCD.getSubH() / PrimaryCCD.getBinY();
@@ -643,10 +645,12 @@ void NightscapeCCD::grabImage()
         dn->copydownload(image, PrimaryCCD.getSubX() / PrimaryCCD.getBinX(),
                                 PrimaryCCD.getSubW() / PrimaryCCD.getBinX(),
                                 PrimaryCCD.getBinX(), 1, 1);
+        if (PrimaryCCD.getSubH() > KAI10100_ACTIVE_Y) {
+            DO_ERR("FRAME_H (%d) > active max: %d", PrimaryCCD.getSubH(), KAI10100_ACTIVE_Y);
+        }
     }
     guard.unlock();
     dn->freeBuf();
-    DO_DBG("released buffer (%p) and lock (%s)\n", downbuf, "grabImage");
 
     LOGF_DEBUG( "Download %d lines complete.", dn->getActWriteLines());
     // Let INDI::CCD know we're done filling the image buffer
