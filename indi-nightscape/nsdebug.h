@@ -1,6 +1,6 @@
 #ifndef __NS_DEBUG__H__
 #define __NS_DEBUG__H__
-#include <indilogger.h>
+#include "indilogger.h"
 
 
 #define DO_INFO(a, ...) IDLog(a, __VA_ARGS__)

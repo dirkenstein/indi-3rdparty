@@ -27,6 +27,7 @@
 #include "nschannel-ftd.h"
 #endif
 #include <stdarg.h>
+#include "indiccd.h"
 
 static volatile int interrupted = 0;
 //static volatile int readdone = 0;
@@ -96,6 +97,7 @@ int main(int argc, char **argv)
 		int laststat = 0;
 		bool dark = false;
     //char fbase[64] = "";
+	memset(fbase, 0, sizeof(fbase));
 
     //bigbuf = malloc(3358*2536*2);
     signal(SIGINT, siginthandler);
@@ -160,15 +162,28 @@ int main(int argc, char **argv)
 		 Nsmsg * m = new Nsmsg(cn);
 	     
    	 NsDownload * d = new NsDownload(cn);
+	
+	int ft;
+	if (dark) {
+		if (expdur < 0.002) {
+			ft = INDI::CCDChip::BIAS_FRAME;
+		} else {
+			ft = INDI::CCDChip::DARK_FRAME;
+		}
+	} else {
+		ft = INDI::CCDChip::LIGHT_FRAME;
+	}
 
     d->setFrameXBinning(binning);
     d->setFrameYBinning(binning);
 
- 		d->setSetTemp(temp);
+ 	d->setSetTemp(temp);
 
     d->setImgSize(m->getRawImgSize(zonestart,zoneend,binning));
 
+		
 		d->setExpDur(expdur);
+		d->setFrameType(ft);
 		d->setIncrement(increment);
 		d->setFbase(fbase);
 		d->setNumExp(nexp);
@@ -241,7 +256,7 @@ int main(int argc, char **argv)
 					fprintf(stderr,"settemp %f\n", temp);
 					m->sendtemp(temp, 1);
       } 
-      if (!interrupted && ((scount == 1 && !done_first) || (tdiff > (10 * 1000))) &&  !in_exp) {
+      if (!interrupted && ((scount == 1 && !done_first) || (tdiff > (2 * 1000))) &&  !in_exp) {
 				done_first = 1;
 				
 				float acttemp = m->rcvtemp();
@@ -262,7 +277,7 @@ int main(int argc, char **argv)
 				lasttemp = now;
 				tdiff = 0;
 			}
-			if (!interrupted && fandiff > (10 * 1000) &&!in_exp && fanspeed == 1) {
+			if (!interrupted && fandiff > (2 * 1000) &&!in_exp && fanspeed == 1) {
 				fprintf(stderr,"now do exp\n");
 				if (!threaded) {
 					d->initdownload();

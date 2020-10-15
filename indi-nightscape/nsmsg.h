@@ -4,6 +4,7 @@
 #define CMD_SIZE 16
 #include <libftdi1/ftdi.h>
 #include "kaf_constants.h"
+#include "kai10100_constants.h"
 #include"nschannel.h"
 #include <mutex>
 class Nsmsg
@@ -33,6 +34,7 @@ class Nsmsg
 		static const unsigned char gtp [CMD_SIZE];
 		static const unsigned char fan [CMD_SIZE];
 		static const unsigned char inqr_8600 [CMD_SIZE];
+		static const unsigned char inqr_10100 [CMD_SIZE];
 		static const unsigned char dur[CMD_SIZE];
 		static const unsigned char zon[CMD_SIZE];
 		

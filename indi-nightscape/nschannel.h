@@ -5,22 +5,33 @@
 #define DEFAULT_OLD_CHUNK_SIZE  63448
 #define DEFAULT_CHUNK_SIZE 65536
 
+typedef enum {
+	none = 0,
+	kaf8300,
+	kai10100
+} camera_t;
+
 class NsChannel {
 	public:
 		NsChannel() {
 			maxxfer = 0;
 			opened = 0;
 			camnum = 0;
+			cam_type = none;
 		}
 		NsChannel(int cam) {
 			camnum = cam;
 			maxxfer = 0;
 			opened = 0;
+			cam_type = none;
 		}
+		
 		virtual ~NsChannel() { if (opened) close(); };
 		int open();
 		int getMaxXfer();
-	
+		camera_t getCamType();
+		void setCamType(camera_t camType);
+
 	  virtual int close();
 		virtual int readCommand(unsigned char * buf, size_t n) = 0;
 		virtual int writeCommand(const unsigned char * buf, size_t n) = 0;
@@ -41,7 +52,7 @@ class NsChannel {
 		unsigned ndevs;
 		bool opened;
 		int thedev;
-	
+	camera_t cam_type;
 	
 
 };

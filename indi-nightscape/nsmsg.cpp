@@ -11,6 +11,7 @@
 		const unsigned char Nsmsg::gtp [CMD_SIZE] = {0xa5, 0x9, 0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 		const unsigned char Nsmsg::fan [CMD_SIZE] = {0xa5, 0xa, 0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 		const unsigned char Nsmsg::inqr_8600 [CMD_SIZE] = {0xA5,1,1,0x80,0,0x4F,0xD8,1,0x26,0,0,0,0,0,0,0};
+		const unsigned char Nsmsg::inqr_10100 [CMD_SIZE] = {0xA5,1,3,0,0,0x29,0x1f,0,0x1a,0,0x1c,0,0,0,0,0};
 		const unsigned char Nsmsg::dur[CMD_SIZE] = {0xa5, 0x3, 0,0,0,0,0xb,0,0,0,0,0,0,0,0,0};
 		const unsigned char Nsmsg::zon[CMD_SIZE] = {0xa5, 0x7, 0,0,0,0, 0,0,0,0, 0x1a,0x82,0,0,7,0};
 		
@@ -103,19 +104,24 @@ bool Nsmsg::inquiry (void) {
 	cmdmutex.lock();
   memcpy(cmd, inq, CMD_SIZE);
     if(sendcmd("inquiry")< 0) return false;
-    if (memcmp(resp, inqr_8600, 5) != 0) {
-				DO_ERR("%s", "not an 8600\n");
+    if (memcmp(resp, inqr_8600, 5) == 0) {
+		this->chan->setCamType(kaf8300);
+	} else if (memcmp(resp, inqr_10100, 5) == 0) {
+		this->chan->setCamType(kai10100);
+	} else {
+			DO_ERR("%s", "not an 8600 or 10100\n");
 	  		hexdump("<", resp, sizeof(inqr_8600));
 		  	hexdump(">", inqr_8600, sizeof(inqr_8600));
+			hexdump("or", inqr_10100, sizeof(inqr_10100));
 		  	cmdmutex.unlock();
 
 		  	return false;
-    } else{
-    	snprintf(firmware_ver,25, "%c.%d.%d.%d\n", resp[5], resp[6], resp[7], resp[8]); // )hexdump("<", resp +5,4);
-
-    	DO_INFO("%c.%d.%d.%d\n", resp[5], resp[6], resp[7], resp[8]); // )hexdump("<", resp +5,4);
-	  	DO_INFO("%c.%d.%d.%d\n", inqr_8600[5], inqr_8600[6], inqr_8600[7], inqr_8600[8] );//hexdump(">", inqr_8600 +5,4);
     }
+    snprintf(firmware_ver,25, "%c.%d.%d.%d\n", resp[5], resp[6], resp[7], resp[8]); // )hexdump("<", resp +5,4);
+
+    DO_INFO("%c.%d.%d.%d\n", resp[5], resp[6], resp[7], resp[8]); // )hexdump("<", resp +5,4);
+	DO_INFO("%c.%d.%d.%d\n", inqr_8600[5], inqr_8600[6], inqr_8600[7], inqr_8600[8] );//hexdump(">", inqr_8600 +5,4);
+    
     hexdump("<", resp, sizeof(inqr_8600));
 
     cmdmutex.unlock();
@@ -153,9 +159,9 @@ void Nsmsg::setdur(float expo, int framediv, bool dark) {
 
 	exp2 = expo*1000;
 	if (framediv == 2) {
-		cmd[6] = 0x2b;
+		cmd[6] = (chan->getCamType() == kaf8300) ? 0x2b : 0x1b;
 	} else if (framediv == 4) {
-   	cmd[6] = 0x4b;
+   	cmd[6] = (chan->getCamType() == kaf8300) ? 0x4b : 0x2b;
   } else {
  		cmd[6] = 0xb;
   };
@@ -174,36 +180,45 @@ void Nsmsg::setdur(float expo, int framediv, bool dark) {
 	
 	start_y =start_y_offset;
 	lines = num_lines;
-  const int min_y = 0x24;
-	const int max_y = 0x09ca;
-	const int max_half = 0x04e6;
-  const int max_quarter = 0x274;
-  int max;
+	const int min_10100_y = KAI10100_Y_PREAMBLE;
+	const int full_max_x = chan->getCamType() == kaf8300 ? KAF8300_MAX_X : KAI10100_MAX_X;
+  const int min_y = chan->getCamType() == kaf8300 ? 24 : min_10100_y;
+	const int max_y = chan->getCamType() == kaf8300 ? KAF8300_ACTIVE_Y : KAI10100_ACTIVE_Y;
+	const int max_half = chan->getCamType() == kaf8300 ? KAF8300_HALF_Y : KAI10100_HALF_Y;
+  const int max_quarter = chan->getCamType() == kaf8300 ? KAF8300_QUARTER_Y : KAI10100_QUARTER_Y;
+  int max_x;
+    int active_y;
 	if (framediv == 2) {
-		max = max_half;
+		max_x = full_max_x / 2;
+		active_y = max_half;
 	} else if (framediv == 4)  {
-		max = max_quarter;
+		max_x = full_max_x / 4;
+		active_y = max_quarter;
 	} else {
-		max = max_y;	
+		max_x = full_max_x;
+		active_y = max_y;	
 	}
 	if (start_y < min_y) start_y = min_y;
 	if (start_y > max_y) start_y = max_y;
-	if (lines < 1 || lines > max) lines = max;
-	if ((lines + start_y) > (min_y+max)) lines = max -start_y;
+	if (lines < 1 || lines > active_y) lines = active_y;
+	if ((lines + start_y) > (min_y+active_y)) lines = active_y - start_y;
 	if(lines < 1) lines = 1;
-	imgsz = KAF8300_MAX_X*lines*2;
-
+	imgsz = max_x * lines*2;
+	if (chan->getCamType() == kai10100 && framediv == 1) {
+		lines = KAI10100_INTERLACE;
+	}
+	DO_DBG("calczone imgsz: %d, start_y: %d, lines: %d\n", imgsz, start_y, lines);
 }
 
 void  Nsmsg::setzone(int start_y, int num_lines, int framediv) {
 	memcpy(cmd, zon, CMD_SIZE);
 	calczone(start_y, num_lines, framediv);
-	cmd[2] = start_y>>8;
-	cmd[3] = start_y & 0xff;
+	cmd[2] = this->start_y>>8;
+	cmd[3] = this->start_y & 0xff;
 	cmd[4] = lines>>8;
 	cmd[5] = lines & 0xff;
 	//cmd[6] = dark * 128;
-	DO_DBG( "zone  %02x %02x %02x %02x \n", zon[2], zon[3], zon[4], zon[5]);
+	DO_DBG( "zone  %02x %02x %02x %02x \n", cmd[2], cmd[3], cmd[4], cmd[5]);
 }
 
 void Nsmsg::setfan(int speed) {

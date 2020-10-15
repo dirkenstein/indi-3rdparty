@@ -1,5 +1,6 @@
 #include "nsdownload.h"
 #include "kaf_constants.h"
+#include "kai10100_constants.h"
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 #include <string.h>
 #include "nsdebug.h"
 #include <math.h>
+#include "indiccd.h"
 
 void NsDownload::setFrameYBinning(int binning) {
 			ctx->imgp->ybinning = binning;	
@@ -44,7 +46,10 @@ void NsDownload::setActTemp(float temp) {
 
 void NsDownload::setExpDur(float exp){
 				ctx->imgp->exp = exp;	
+}
 
+void NsDownload::setFrameType(int ft) {
+	ctx->imgp->frame_type = ft;
 }
 
 void NsDownload::setIncrement(int inc) {
@@ -78,6 +83,12 @@ unsigned char * NsDownload::getBuf() {
 	return retrBuf->buffer;	
 }
 
+int NsDownload::getBufSize() {
+	if (retrBuf == NULL || retrBuf->buffer == NULL) {
+		return 0;
+	}
+	return retrBuf->bufsiz;
+}
 
 size_t NsDownload::getBufImageSize() {
 	if (retrBuf == NULL) return 0;
@@ -108,6 +119,21 @@ void NsDownload::setZeroReads(int zeroes){
 }
  int NsDownload::getActWriteLines(){
 		 return writelines;	
+}
+
+int NsDownload::get_max_x() {
+	if (cn->getCamType() == kaf8300) {
+		return KAF8300_MAX_X;
+	} else if (cn->getCamType() == kai10100) {
+		int res = KAI10100_MAX_X / ctx->imgp->xbinning;
+		if (ctx->imgp->xbinning == 4) {
+			res -= 1;
+		}
+		return res;
+	} else {
+		DO_ERR("unknown ccd type: %d", cn->getCamType());
+		return 0;
+	}
 }
 
 int NsDownload::downloader() 
@@ -195,45 +221,58 @@ SWOWNER = 'Dirk    ' /          Licensed owner of software
 END                                                                                                                                                                     
 */
 
-void NsDownload::fitsheader(int x, int y, char * fbase, struct img_params * ip)
+int NsDownload::fitsheader(fitsfile *fptr, char *fbase, struct img_params *ip)
 {
-	FILE * f = img;
-	char datebuf[25] = "''";
-	char fbase2[64];
-	struct tm t;
-	gmtime_r(&ip->expdate, &t);
-	strncpy (fbase2, fbase, 12);
-	fbase2[12] = 0;
-	snprintf(datebuf, 25, "'%4d-%02d-%02dT%02d:%02d:%02d'", t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
-	int nl = 0;
-	nl++; fprintf(f, "%-8s=%21s %-49s", "SIMPLE", "T", "");	
-	nl++; fprintf(f, "%-8s=%21s %-49s", "BITPIX", "16", "/8 unsigned int, 16 & 32 int, -32 & -64 real");	
-	nl++; fprintf(f, "%-8s=%21s %-49s", "NAXIS", "2", "/number of axes");
-	nl++; fprintf(f, "%-8s=%21d %-49s", "NAXIS1", x, "/fastest changing axis");
-	nl++; fprintf(f, "%-8s=%21d %-49s", "NAXIS2", y, "/next to fastest changing axis");
- 	nl++; fprintf(f, "%-8s=%22s %-48s", "DATE-OBS", datebuf, "/YYYY-MM-DDThh:mm:ss observation start, UT");
-  nl++; fprintf(f, "%-8s=%21.12f %-49s", "BZERO", 32768.0, "/physical = BZERO + BSCALE*array_value");
-  nl++; fprintf(f, "%-8s=%21.16f %-49s", "EXPTIME", ip->exp, "/Exposure time in seconds");
-  nl++; fprintf(f, "%-8s=%21.16f %-49s", "SET-TEMP", ip->settemp, "/CCD temperature setpoint in C");
-  nl++; fprintf(f, "%-8s=%21.16f %-49s", "CCD-TEMP", ip->acttemp, "/CCD temperature at start of exposure in C");
-  nl++; fprintf(f, "%-8s=%21.16f %-49s", "XPIXSZ", (float)ip->xbinning*5.40, "/Pixel Width in microns (after binning) ");
-  nl++; fprintf(f, "%-8s=%21.16f %-49s", "YPIXSZ", (float)ip->ybinning*5.40, "/Pixel Height in microns (after binning) ");
- 	nl++; fprintf(f, "%-8s=%21d %-49s", "XBINNING", ip->xbinning, "/Binning factor in width");
- 	nl++; fprintf(f, "%-8s=%21d %-49s", "YBINNING", ip->ybinning, "/Binning factor in height");
- 	nl++; fprintf(f, "%-8s=%21s %-49s", "XORGSUBF", "0", "/Subframe X position in binned pixels");
- 	nl++; fprintf(f, "%-8s=%21s %-49s", "YORGSUBF", "0", "/Subframe Y position in binned pixels");
- 	nl++; fprintf(f, "%-8s= '%-8s' %-59s", "READOUTM", "Raw", "/          Readout mode of image");	
- 	nl++; fprintf(f, "%-8s= '%-8s' %-59s", "IMAGETYP", "LIGHT", "/          Type of image");	
-  nl++; fprintf(f, "%-8s= '%-13s' %-54s", "SWCREATE", "nstest-u 0.90", "/Name of software that created the image");	
-	nl++; fprintf(f, "%-8s=%21s %-49s", "COLORTYP", "2", "");	
- 	nl++; fprintf(f, "%-8s= '%-4s' %-63s", "BAYERPAT", "BGGR", "/          Baye pattern");	
- 	nl++; fprintf(f, "%-8s=%21s %-49s", "XBAYROFF", "0", "");
- 	nl++; fprintf(f, "%-8s=%21s %-49s", "YBAYROFF", "0", "");
-  nl++; fprintf(f, "%-8s= '%-12s' %-55s", "OBJECT", fbase, "");	
-  nl++; fprintf(f, "%-8s= '%-26s' %-41s", "INSTRUME", "Celestron Nightscape 8300C", "/instrument or camera used");	
-  nl++; fprintf(f, "%-80s", "END");
-  for (int x = nl; x < 36; x++) fprintf(f, "%-80s", "");
-  
+    char datebuf[20] = "";
+    char fbase2[64];
+    struct tm t;
+    gmtime_r(&ip->expdate, &t);
+    strncpy(fbase2, fbase, 12);
+    fbase2[12] = 0;
+    snprintf(datebuf, 20, "%4d-%02d-%02dT%02d:%02d:%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour,
+             t.tm_min, t.tm_sec);
+    float xpixsize         = ip->xbinning * 4.75;
+    float ypixsize         = ip->ybinning * 4.75;
+    ushort zero            = 0;
+    ushort two             = 2;
+    int status             = 0;
+    const char *image_type = NULL;
+    switch (ip->frame_type) {
+		case INDI::CCDChip::BIAS_FRAME:
+			image_type = "BIAS";
+			break;
+		case INDI::CCDChip::DARK_FRAME:
+			image_type = "DARK";
+			break;
+		case INDI::CCDChip::LIGHT_FRAME:
+			image_type = "LIGHT";
+			break;
+		case INDI::CCDChip::FLAT_FRAME:
+			image_type = "FLAT";
+			break;
+		default:
+			DO_ERR("frame type not understood: %d", ip->frame_type);
+	}
+
+    fits_update_key(fptr, TSTRING, "DATE-OBS", datebuf, "Date of observation", &status);
+    fits_update_key(fptr, TFLOAT, "EXPTIME", &ip->exp, "Exposure time in seconds", &status);
+    fits_update_key(fptr, TFLOAT, "SET_TEMP", &ip->settemp, "CCD temperature setpoint in C", &status);
+    fits_update_key(fptr, TFLOAT, "CCD_TEMP", &ip->acttemp, "CCD temperature at start of exposure in C", &status);
+    fits_update_key(fptr, TFLOAT, "XPIXSZ", &xpixsize, "Pixel Width in microns (after binning)", &status);
+    fits_update_key(fptr, TFLOAT, "YPIXSZ", &ypixsize, "Pixel Height in microns (after binning)", &status);
+    fits_update_key(fptr, TSHORT, "XBINNING", &ip->xbinning, "Pixel Width in microns (after binning)", &status);
+    fits_update_key(fptr, TSHORT, "YBINNING", &ip->ybinning, "Pixel Height in microns (after binning)", &status);
+    fits_update_key(fptr, TUSHORT, "XORGSUBF", &zero, "Subframe X position in binned pixels", &status);
+    fits_update_key(fptr, TUSHORT, "YORGSUBF", &zero, "Subframe Y position in binned pixels", &status);
+    fits_update_key(fptr, TSTRING, "READOUTM", (void *)"Raw", "Readout mode of image", &status);
+    fits_update_key(fptr, TSTRING, "IMAGETYP", (void *)image_type, "Type of image", &status);
+    fits_update_key(fptr, TSTRING, "SWCREATE", (void *)"indi-nightscape", "Name of software that created the image", &status);
+    fits_update_key(fptr, TUSHORT, "COLORTYP", &two, "Color type", &status);
+    fits_update_key(fptr, TSTRING, "BAYERPAT", (void *)"BGGR", "Bayer pattern", &status);
+    fits_update_key(fptr, TUSHORT, "XBAYROFF", &zero, "Bayer x offset", &status);
+    fits_update_key(fptr, TUSHORT, "XBAYROFF", &zero, "Bayer y offset", &status);
+    fits_update_key(fptr, TSTRING, "OBJECT", fbase, "Object being observed", &status);
+    return status;
 }
 
 
@@ -241,9 +280,8 @@ void NsDownload::writedownload(int pad, int cooked)
 {
 	char fname[64];
 	char fnab[64];
-	unsigned char linebuf[KAF8300_MAX_X*2];
 	const char * extn;
-  int procid = getpid();
+	int procid = getpid();
 	int nwrite = 0;
 	if (cooked) {
 		extn = ".fts";
@@ -268,43 +306,93 @@ void NsDownload::writedownload(int pad, int cooked)
   }
 	printf("%s\n",fname);
 
-	img = fopen(fname, "wb");
-	if (img == NULL) {
-		DO_ERR( "cannot create file %s, error %s\n", fname, strerror(errno));
-	}
 	if (pad) {
 		nwrite = retrBuf->imgsz;
 	} else {
-		nwrite = retrBuf->nread;
+		nwrite = std::min(retrBuf->nread, retrBuf->imgsz);
 	}
 	if (!cooked) {
+		img = fopen(fname, "wb");
+		if (img == NULL) {
+			DO_ERR( "cannot create file %s, error %s\n", fname, strerror(errno));
+		}
 		
 		if (img) fwrite (retrBuf->buffer, sizeof(char), nwrite , img);
-	} else if (img) {
-		int actlines = nwrite / (KAF8300_MAX_X*2);
-	  //int rem = nwrite % (KAF8300_MAX_X*2);
-	  
-		fitsheader(KAF8300_ACTIVE_X, actlines, fnab, ctx->imgp);
-		int nwriteleft = nwrite;
-		unsigned char * bufp = retrBuf->buffer;
-		writelines = 0;
-	  while (nwriteleft >= (KAF8300_MAX_X*2)) {
-	  	swab (bufp + (KAF8300_POSTAMBLE*2),  linebuf, KAF8300_ACTIVE_X*2 );
-			fwrite (linebuf, sizeof(char), KAF8300_ACTIVE_X*2 , img);
-			bufp +=  KAF8300_MAX_X*2;
-			nwriteleft -= KAF8300_MAX_X*2;
-			writelines++;
-	  }
+		if (img) fclose(img);
+	} else {
+		const int max_x = get_max_x();
+		int actlines = nwrite / (max_x * 2);
+	  	DO_DBG("max_x: %d actlines: %d nwrite: %d imgsz: %d\n", max_x, actlines, nwrite, rd->imgsz);
+		writelines = actlines;
+		unsigned char * image_buf = (unsigned char *) malloc(rd->imgsz);
+		const int active_x = (cn->getCamType() == kaf8300 ? KAF8300_ACTIVE_X : KAI10100_ACTIVE_X) / ctx->imgp->xbinning;
+		this->copydownload(image_buf, 0, active_x, ctx->imgp->xbinning, pad, cooked);
+
+        fitsfile *fptr;
+        int status    = 0;
+        long naxis    = 2, nelements;
+        long naxes[2] = { active_x, actlines };
+        writelines    = actlines;
+
+        fits_create_file(&fptr, fname, &status);
+        if (status != 0)
+        {
+            DO_ERR("attempt to create fits file '%s' failed (%d)", fname, status);
+            fits_report_error(stderr, status);
+            return;
+        }
+
+        fits_create_img(fptr, SHORT_IMG, naxis, naxes, &status);
+        if (status != 0)
+        {
+            DO_ERR("attempt to create fits image (%ld, %ld, %ld) failed (%d)", naxis, naxes[0], naxes[1], status);
+            fits_report_error(stderr, status);
+            return;
+        }
+
+        if ((status = fitsheader(fptr, fname, ctx->imgp)) != 0)
+        {
+            fits_report_error(stderr, status);
+            return;
+        }
+
+        nelements = naxes[0] * naxes[1];
+        fits_write_img(fptr, TSHORT, 1, nelements, image_buf, &status);
+        while (status != 0)
+        {
+			char err_buf[32];
+            fits_report_error(stderr, status);
+			if (ffgmsg(err_buf) == 0) { status = 0; }
+            DO_ERR("attempt to write fits file %s had an error (%d) '%s'", fname, status, err_buf);
+            return;
+        }
+
+        fits_close_file(fptr, &status);
+        if (status != 0)
+        {
+            DO_ERR("attempt to close fits file %s failed (%d)", fname, status);
+            fits_report_error(stderr, status);
+            return;
+        }
+
+        free(image_buf);
 	 DO_INFO( "wrote %d lines\n", writelines);
 	}	 
-	if (img) fclose(img);	
 }
 
+void NsDownload::copydownload(unsigned char *buf, int xstart, int xlen, int xbin, int pad, int cooked) {
+	if (cn->getCamType() == kaf8300) {
+		this->copydownload_kaf8300(buf, xstart, xlen, xbin, pad, cooked);
+	} else if (cn->getCamType() == kai10100) {
+		this->copydownload_kai10100(buf, xstart, xlen, xbin, pad, cooked);
+	} else {
+		DO_ERR("bad camera type in copydownload! %d", cn->getCamType());
+	}
+}
 
-
-void NsDownload::copydownload(unsigned char *buf, int xstart, int xlen, int xbin, int pad, int cooked)
+void NsDownload::copydownload_kaf8300(unsigned char *buf, int xstart, int xlen, int xbin, int pad, int cooked)
 {
-	unsigned char linebuf[KAF8300_MAX_X*2];
+	unsigned char linebuf[KAF8300_MAX_X * 2];
 	bool forwards = true;
 	bool rms = false;
 	int binning = xbin;
@@ -335,7 +423,7 @@ void NsDownload::copydownload(unsigned char *buf, int xstart, int xlen, int xbin
 			//dbufp =  (dbufp +(KAF8300_ACTIVE_X*2*IMG_Y)) - (KAF8300_ACTIVE_X*2);
 		} else {
 			bufp = (retrBuf->buffer + nwrite) - (KAF8300_MAX_X*2);
-			dbufp =  (dbufp +(KAF8300_ACTIVE_X*2*IMG_MAX_Y)) - (KAF8300_ACTIVE_X*2);
+			dbufp =  (dbufp +(KAF8300_ACTIVE_X*2*KAF8300_ACTIVE_Y)) - (KAF8300_ACTIVE_X*2);
 		}
 		writelines = 0;
 	  while (nwriteleft >= (KAF8300_MAX_X*2)) {
@@ -387,6 +475,64 @@ void NsDownload::copydownload(unsigned char *buf, int xstart, int xlen, int xbin
 	}	 
 }
 
+void NsDownload::copydownload_kai10100(unsigned char *image, int xstart, int xlen, int xbin, int pad, int cooked) {
+	uint8_t * img_dest = image;
+	uint8_t * img_src;
+	int nwrite = 0;
+	
+	if (retrBuf == NULL) {
+		DO_DBG("%s", "no image");
+		return;	
+	}
+	DO_DBG("copydownload image: %p xstart: %d xlen: %d xbin: %d pad: %d cooked: %d\n", image, xstart, xlen, xbin, pad, cooked);
+	DO_INFO("done! blks %d totl %d last %d\n", retrBuf->nblks, retrBuf->nread,lastread);
+			
+	if (!cooked) {
+		if (pad) {
+			nwrite = retrBuf->imgsz;
+		} else {
+			nwrite = retrBuf->nread;
+		}
+		memcpy (img_dest, retrBuf->buffer, nwrite);
+	} else {
+		const int max_x = get_max_x();
+		const int active_y = xbin == 1 ? KAI10100_ACTIVE_Y : xbin == 2 ? KAI10100_HALF_Y : KAI10100_QUARTER_Y;
+
+		int actual_lines = retrBuf->nread / (max_x * 2);
+		DO_DBG("actual_lines: %d nread: %d max_x: %d\n", actual_lines, retrBuf->nread, max_x);
+		if (actual_lines > active_y) {actual_lines = active_y;}
+
+	  	nwrite = retrBuf->nread;
+		writelines = 0;
+	    if (xbin == 1) {
+			// At binning 1, the image is downloaded in 4 groups which need to be interlaced
+			// together to form the final image.
+			for (int offset = 0; offset < 4; ++offset) {
+				img_src = retrBuf->buffer + (offset * KAI10100_INTERLACE * max_x * 2) + ((KAI10100_X_PREAMBLE + xstart) * 2);
+				img_dest = image + (offset * xlen * 2);
+				for (int line = 0; line < (actual_lines / 4); ++line) {
+					memcpy(img_dest, img_src, xlen * 2);
+					img_src += max_x * 2;
+					img_dest += xlen * 2 * 4;
+					writelines++;
+				}
+			}
+	    } else {
+			img_src = retrBuf->buffer + ((KAI10100_X_PREAMBLE / xbin + xstart) * 2);
+			img_dest = image;
+			for (int line = 0; line < actual_lines; ++line) {
+				memcpy(img_dest, img_src, xlen * 2);
+				img_src +=  max_x * 2;
+				img_dest += (xlen * 2);
+				writelines++;
+			}
+	  	
+		  }
+		DO_INFO( "wrote %d lines\n", writelines);
+	}	 
+}
+
+
 int NsDownload::purgedownload() 
 {
 		int rc2;
@@ -429,7 +575,12 @@ int NsDownload::fulldownload()
 
 void NsDownload::initdownload()
 {
-	  long imgszmax = KAF8300_MAX_X*0x9ca*2 + DEFAULT_CHUNK_SIZE;
+	long imgszmax;
+	if (cn->getCamType() == kaf8300) {
+		imgszmax = KAF8300_MAX_X*KAF8300_ACTIVE_Y*2 + DEFAULT_CHUNK_SIZE;
+	} else {
+		imgszmax = KAI10100_MAX_X*KAI10100_MAX_Y*2 + DEFAULT_CHUNK_SIZE;
+	}
 		readdone = 0;
 		rd->nread = 0;
 		if(!rd->buffer) {
@@ -495,10 +646,11 @@ void NsDownload::trun()
 	  	}
 	  	int pad = 0;
 	  	if (rd->nread != rd->imgsz) {
-	  		int actlines = rd->nread / (KAF8300_MAX_X*2);
-	  		int rem = rd->nread % (KAF8300_MAX_X*2);
-	  		DO_INFO( "siz %d read %d act lines %d rem %d\n",  rd->imgsz,rd->nread, actlines, rem);
-	  		if (rd->imgsz - rd->nread < KAF8300_MAX_X * 5) {
+			const int max_x = get_max_x();
+	  		int actlines = rd->nread / (max_x*2);
+	  		int rem = rd->nread % (max_x*2);
+	  		DO_INFO( "siz %d read %d act lines %d rem %d\n",  rd->imgsz, rd->nread, actlines, rem);
+	  		if (rd->imgsz - rd->nread < max_x * 5) {
 	  			pad = 1;
 	  		}
 	    }	
@@ -511,7 +663,7 @@ void NsDownload::trun()
 	    	rd->buffer = NULL;
 	    }
 	    //IDLog("retr %p buf %p \n", retrBuf, rb.buffer);
-	    if(write_it) writedownload(pad, 0);
+	    if(write_it) writedownload(pad, 1);
 			
 	  	do_download = 0;
 	  	in_download = 0;

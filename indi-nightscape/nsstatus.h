@@ -12,6 +12,7 @@
 class NsStatus {
  public:
  NsStatus () {
+	 cn = NULL;
     m = NULL;
     status = 0;	
     old_status = 0;
@@ -19,7 +20,8 @@ class NsStatus {
     interrupted = 0;
 
   }
-   NsStatus (Nsmsg * ms, NsDownload *dn) {
+   NsStatus (NsChannel * c, Nsmsg * ms, NsDownload *dn) {
+	cn = c;
     m = ms;
     d = dn;
     status = 0;	
@@ -46,6 +48,7 @@ class NsStatus {
 		std::condition_variable go_status;
 		std::mutex stmut;
 
+		NsChannel * cn;
 		Nsmsg * m;
 		NsDownload * d;
 };

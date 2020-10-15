@@ -1,7 +1,7 @@
-Nightscape 8300 INDI Driver
+Nightscape INDI Driver (for both KAF8300 and KAI10100 cameras)
 ===========================
 
-This package provides the INDI driver for the Celestron Nightscape 8300 line of CCDs.
+This package provides the INDI driver for the Celestron Nightscape line of CCDs.
 
 Requirements
 ============
