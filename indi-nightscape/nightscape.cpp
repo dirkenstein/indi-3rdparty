@@ -1,7 +1,7 @@
 /*
    Based on INDI Developers Manual Tutorial #3
 
-   "Nightscape 8300 CCD Driver"
+   "Nightscape CCD Driver"
 
    Refer to README, which contains instruction on how to build this driver, and use it
    with an INDI-compatible client.
@@ -10,7 +10,8 @@
 
 /** \file NightscapeCCD.cpp
     \brief Construct a basic INDI CCD device  It also generates an image  and uploads it as a FITS file.
-    \author Dirk Niggemann
+    \author Dirk Niggemann (KAF8300 done first)
+    \author Hugh Hoover (KAI10100 done second)
 
     \example NightscapeCCD.cpp
     A simple CCD device that can capture images and control temperature. It returns a FITS image to the client. To build drivers for complex CCDs, please
@@ -189,7 +190,7 @@ bool NightscapeCCD::Connect()
 
     m = new Nsmsg(cn);
     dn = new NsDownload(cn);
-    st = new NsStatus(m, dn);
+    st = new NsStatus(cn, m, dn);
     if(!m->inquiry())
     {
         LOG_WARN( "inquiry failed!");
@@ -253,7 +254,11 @@ bool NightscapeCCD::Disconnect()
 ***************************************************************************************/
 const char *NightscapeCCD::getDefaultName()
 {
-    return "Nightscape 8300";
+    if (this->cn == nullptr) {
+        return "Nightscape";
+    } else {
+        return cn->getCamType() == kaf8300 ? "Nightscape 8300" : "Nightscape 10100";
+    }
 }
 
 /**************************************************************************************
@@ -324,7 +329,6 @@ bool NightscapeCCD::initProperties()
         IUSaveText(&BayerT[0], "0");
         IUSaveText(&BayerT[1], "0");
         IUSaveText(&BayerT[2], "BGGR");
-
     }
     SetCCDCapability(cap);
 
@@ -369,9 +373,21 @@ bool NightscapeCCD::updateProperties()
 ***************************************************************************************/
 void NightscapeCCD::setupParams()
 {
-    // Our CCD is an 16 bit CCD, 1280x1024 resolution, with 5.4um square pixels.
-    SetCCDParams(KAF8300_ACTIVE_X, IMG_Y, 16, 5.4, 5.4);
-    PrimaryCCD.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.001, 3600, 1, false);
+    // Our CCD is an 16 bit CCD, 3326x2506 resolution, with 5.4um square pixels.
+    if (cn->getCamType() == kaf8300) {
+        SetCCDParams(KAF8300_ACTIVE_X, KAF8300_ACTIVE_Y, 16, 5.4, 5.4);
+    } else if (cn->getCamType() == kai10100) {
+        // unless our CCD is a KAI10100, in which case its 3760x2840 with 4.75um square
+        SetCCDParams(KAI10100_ACTIVE_X, KAI10100_ACTIVE_Y, 16, 4.75, 4.75);
+    } else {
+        DO_ERR("unknown camera type (not 8300 or 10100): %d", cn->getCamType());
+    }
+
+    if (cn->getCamType() == kaf8300) {
+        PrimaryCCD.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.001, 3600, 1, false);
+    } else {
+        PrimaryCCD.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.001, 24 * 3600, 1, false);
+    }
 
     // Let's calculate how much memory we need for the primary CCD buffer
     int nbuf;
@@ -406,14 +422,27 @@ bool NightscapeCCD::StartExposure(float duration)
     int zonestart = PrimaryCCD.getSubY();
     int zonelen = PrimaryCCD.getSubH();
     int framediv = PrimaryCCD.getBinY();
-    PrimaryCCD.setPixelSize(5.4 * PrimaryCCD.getBinX(), 5.4 * PrimaryCCD.getBinY());
+    if (cn->getCamType() == kaf8300) {
+        PrimaryCCD.setPixelSize(5.4 * PrimaryCCD.getBinX(), 5.4 * PrimaryCCD.getBinY());
+    } else {
+        PrimaryCCD.setPixelSize(4.75 * PrimaryCCD.getBinX(), 4.75 * PrimaryCCD.getBinY());
+        if (framediv == 1) {
+            IUSaveText(&BayerT[2], "GRBG");
+        } else {
+            IUSaveText(&BayerT[2], "BGGR");
+        }
+    }
     dn->setImgSize(m->getRawImgSize(zonestart, zonelen, framediv));
     dn->setFrameYBinning(framediv);
-    dn->setFrameXBinning(PrimaryCCD.getBinX());
+    if (cn->getCamType() == kaf8300) {
+        dn->setFrameXBinning(PrimaryCCD.getBinX());
+    } else {
+        dn->setFrameXBinning(framediv);
+    }
     m->sendzone(zonestart, zonelen, framediv);
     INDI::CCDChip::CCD_FRAME ft = PrimaryCCD.getFrameType();
-    if (ft == INDI::CCDChip::DARK_FRAME || ft == INDI::CCDChip::BIAS_FRAME) dark = true;
-    else dark = false;
+    dark = (ft == INDI::CCDChip::DARK_FRAME || ft == INDI::CCDChip::BIAS_FRAME);
+    DO_DBG("starting exposure %4.3f starty: %d leny: %d biny: %d imgsiz: %zu\n", duration, zonestart, zonelen, framediv, dn->getBufImageSize());
     m->senddur(duration, framediv, dark);
     InExposure = true;
     // We're done
@@ -601,26 +630,30 @@ void NightscapeCCD::TimerHit()
 void NightscapeCCD::grabImage()
 {
     // Let's get a pointer to the frame buffer
+    DO_DBG("acquire lock (%s)\n", "grabImage");
     std::unique_lock<std::mutex> guard(ccdBufferLock);
     uint8_t *image = PrimaryCCD.getFrameBuffer();
     uint8_t * downbuf = dn->getBuf();
     size_t downsz = dn->getBufImageSize();
-    LOGF_DEBUG("image size %ld buf %p", downsz, downbuf);
+    LOGF_DEBUG("image (%p) size %ld buf %p bufsize %d", image, downsz, downbuf, dn->getBufSize());
     // Get width and height
     //int width  = PrimaryCCD.getSubW() / PrimaryCCD.getBinX() * PrimaryCCD.getBPP() / 8;
     //int height = PrimaryCCD.getSubH() / PrimaryCCD.getBinY();
     memset(image, 0, PrimaryCCD.getFrameBufferSize());
-    dn->copydownload(image, PrimaryCCD.getSubX(), PrimaryCCD.getSubW(), PrimaryCCD.getBinX(), 1, 1);
+    if (this->cn->getCamType() == kaf8300) {
+        dn->copydownload(image, PrimaryCCD.getSubX(), PrimaryCCD.getSubW(), PrimaryCCD.getBinX(), 1, 1);
+    } else {
+        dn->copydownload(image, PrimaryCCD.getSubX() / PrimaryCCD.getBinX(),
+                                PrimaryCCD.getSubW() / PrimaryCCD.getBinX(),
+                                PrimaryCCD.getBinX(), 1, 1);
+        if (PrimaryCCD.getSubH() > KAI10100_ACTIVE_Y) {
+            DO_ERR("FRAME_H (%d) > active max: %d", PrimaryCCD.getSubH(), KAI10100_ACTIVE_Y);
+        }
+    }
     guard.unlock();
-    //IDLog("copied..\n");
-
-    // Fill buffer with random pattern
-    //for (int i = 0; i < height; i++)
-    //    for (int j = 0; j < width; j++)
-    //        image[i * width + j] = rand() % 255;
     dn->freeBuf();
-    LOGF_DEBUG( "Download %d lines complete.", dn->getActWriteLines());
 
+    LOGF_DEBUG( "Download %d lines complete.", dn->getActWriteLines());
     // Let INDI::CCD know we're done filling the image buffer
     ExposureComplete(&PrimaryCCD);
 }

@@ -42,9 +42,11 @@ IF (UNIX OR APPLE)
             STRING(FIND ${SOURCE_FILE} libsbig DIR6_FOUND)
             STRING(FIND ${SOURCE_FILE} fxload DIR7_FOUND)
             STRING(FIND ${SOURCE_FILE} libinovasdk DIR8_FOUND)
+            STRING(FIND ${SOURCE_FILE} libsv305 DIR9_FOUND)
+            STRING(FIND ${SOURCE_FILE} libahp_xc DIR10_FOUND)
             IF (NOT ${DIR1_FOUND} EQUAL -1 OR NOT ${DIR2_FOUND} EQUAL -1 OR NOT ${DIR3_FOUND} EQUAL -1 OR NOT ${DIR4_FOUND} EQUAL -1 OR
                 NOT ${DIR5_FOUND} EQUAL -1 OR NOT ${DIR6_FOUND} EQUAL -1 OR NOT ${DIR7_FOUND} EQUAL -1 OR NOT ${DIR8_FOUND} EQUAL -1 OR
-                NOT ${DIR9_FOUND} EQUAL -1)
+                NOT ${DIR9_FOUND} EQUAL -1 OR NOT ${DIR10_FOUND})
                 LIST(REMOVE_ITEM ALL_SOURCE_FILES ${SOURCE_FILE})
             ENDIF ()
         ENDFOREACH ()
@@ -106,12 +108,11 @@ option(WITH_SKYWALKER "Install AOK SkyWalker Mount Driver" On)
 option(WITH_TALON6 "Install Talon6 Mount Driver" On)
 option(WITH_PENTAX "Install Pentax Driver" On)
 option(WITH_ASTROLINK4 "Install AstroLink4 Driver" On)
-option(WITH_AHP_INTERFEROMETER "Install AHP Interferometer Driver" On)
+option(WITH_AHP_CORRELATOR "Install AHP XC Correlators Driver" On)
+option(WITH_SV305 "Install SVBONY SV305 Camera Driver" On)
 
+# FFMPEG required for INDI Webcam driver
 find_package(FFmpeg)
-
-option(WITH_WEBCAM "Install INDI Webcam Driver based on FFMPEG" Off)
-
 if (FFMPEG_FOUND)
     message(STATUS "Since FFMPEG was found, INDI Webcam Driver can be built")
     option(WITH_WEBCAM "Install INDI Webcam Driver based on FFMPEG" On)
@@ -120,6 +121,18 @@ ELSE(FFMPEG_FOUND)
     option(WITH_WEBCAM "Install INDI Webcam Driver based on FFMPEG" Off)
 ENDIF(FFMPEG_FOUND)
 
+
+# MMAL Required for Raspberry PI camera driver
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "armv+" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+find_package(MMAL)
+endif()
+
+IF (MMAL_FOUND)
+option(WITH_RPICAM "Install Raspberry Pi High Quality Camera Driver" On)
+ELSE ()
+option(WITH_RPICAM "Install Raspberry Pi High Quality Camera Driver" Off)
+ENDIF(MMAL_FOUND)
+
 # Add/remove cases for OSX
 IF (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(WITH_INOVAPLX Off)
@@ -127,6 +140,8 @@ IF (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(WITH_FXLOAD Off)
     set(WITH_PENTAX Off)
     set(WITH_GPSD Off)
+    set(WITH_SV305 Off)
+    set(WITH_AHP_CORRELATOR Off)
 ENDIF ()
 # Disable apogee, qhy and mi with gcc 4.8 and earlier versions
 IF (CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
@@ -205,6 +220,11 @@ add_subdirectory(libstarshootg)
 add_subdirectory(libnncam)
 add_subdirectory(libmallincam)
 endif (WITH_TOUPBASE)
+
+#libsv305
+if (WITH_SV305)
+add_subdirectory(libsv305)
+endif (WITH_SV305)
 
 # This is the main 3rd Party build.  It runs if the Build Libs option is not selected.
 ELSE(BUILD_LIBS)
@@ -529,9 +549,32 @@ SET(LIBRARIES_FOUND FALSE)
 endif (PENTAX_FOUND)
 endif(WITH_PENTAX)
 
-if (WITH_AHP_INTERFEROMETER)
-add_subdirectory(indi-ahp-interferometer)
-endif(WITH_AHP_INTERFEROMETER)
+# AHP
+if (WITH_AHP_CORRELATOR)
+find_package(AHPXC)
+if(AHPXC_FOUND)
+add_subdirectory(indi-ahp-correlator)
+else (AHPXC_FOUND)
+add_subdirectory(libahp_xc)
+SET(LIBRARIES_FOUND FALSE)
+endif (AHPXC_FOUND)
+endif(WITH_AHP_CORRELATOR)
+
+# sv305
+if (WITH_SV305)
+find_package(SV305)
+if(SV305_FOUND)
+add_subdirectory(indi-sv305)
+else(SV305_FOUND)
+add_subdirectory(libsv305)
+SET(LIBRARIES_FOUND FALSE)
+endif(SV305_FOUND)
+endif(WITH_SV305)
+
+# rpi_cam
+if (WITH_RPICAM)
+add_subdirectory(indi-rpicam)
+endif(WITH_RPICAM)
 
 # Check if libraries are found. If not, we must build them, install them, THEN run CMake again to build and instal the drivers. If all the libraraies are installed, then we build and install the drivers only now.
 if (LIBRARIES_FOUND)
@@ -605,6 +648,14 @@ endif (WITH_RTLSDR AND NOT RTLSDR)
 if (WITH_PENTAX AND NOT PENTAX_FOUND)
 message(STATUS "libpktriggercord and/or libricohcamerasdk were not found and will now be built. Please install these libraries first before running cmake again to install indi-pentax.")
 endif (WITH_PENTAX AND NOT PENTAX_FOUND)
+
+if (WITH_SV305 AND NOT SV305_FOUND)
+message(STATUS "libsv305 was not found and will now be built. Please install this libsv305 first before running cmake again to install indi-sv305.")
+endif (WITH_SV305 AND NOT SV305_FOUND)
+
+if (WITH_AHP_CORRELATOR AND NOT AHPXC_FOUND)
+message(STATUS "libahp_xc was not found and will now be built. Please install libahp_xc first before running cmake again to install indi-ahp-correlator.")
+endif (WITH_AHP_CORRELATOR AND NOT AHPXC_FOUND)
 
 message(STATUS "####################################################################################################################################")
 endif (LIBRARIES_FOUND)

@@ -19,3 +19,11 @@ int NsChannel::close() {
 int NsChannel::getMaxXfer() {
 		return maxxfer;	
 }
+
+camera_t NsChannel::getCamType() {
+	return cam_type;
+}
+
+void NsChannel::setCamType(camera_t ct) {
+	cam_type = ct;
+}

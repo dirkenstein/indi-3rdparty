@@ -95,7 +95,7 @@ int  NsChannelFTD::opendownload(void)
         return(-1);
     }
     // maxxfer = chunksize - ((chunksize / 64)*2);
-    maxxfer = chunksize - ((chunksize / 512) * 2);
+    maxxfer = chunksize - (this->cam_type == kaf8300 ? ((chunksize / 512) * 2) : 2);
 
     //maxxfer = (chunksize/4) - (((chunksize/4) / 64)*2);
     //maxxfer = (chunksize/4) - (((chunksize/4) / 512)*2);

@@ -14,9 +14,10 @@
 //Leading 1 active cte 3 dark dummy 4 blue 16 active
 #define KAF8300_Y_POSTAMBLE (1+3+4+16)
 
-#define IMG_Y 2504
-#define IMG_MAX_Y 2506
-#define IMG_Y_HALF 1253
+#define KAF8300_ACTIVE_Y 2504
+#define KAF8300_IMG_MAX_Y 2506
+#define KAF8300_HALF_Y   1253
+#define KAF8300_QUARTER_Y 628
 
 #define CMD_SIZE 16
 

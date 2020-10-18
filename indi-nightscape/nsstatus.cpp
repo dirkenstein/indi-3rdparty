@@ -55,8 +55,15 @@ void NsStatus::trun(){
 			if (old_status == 1 && status == 2) {
 				stattime = millis();
 			}
+
+			int wait_millis;
+			if (cn->getCamType() == kaf8300) {
+				wait_millis = 9500;
+			} else {
+				wait_millis = 500;
+			}
 			if ((old_status == 2 && status == 0) ||
-				(status == 2 && ( millis() - stattime >= 9500)) ) {
+				(status == 2 && ( millis() - stattime >= wait_millis)) ) {
 				if (!download) { 
 					d->doDownload();
 					DO_DBG("%s\n", "download start..");

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.0)
 PROJECT(indi_gphoto C CXX)
 
-set(INDI_GPHOTO_VERSION_MAJOR 2)
-set(INDI_GPHOTO_VERSION_MINOR 9)
+set(INDI_GPHOTO_VERSION_MAJOR 3)
+set(INDI_GPHOTO_VERSION_MINOR 0)
 
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/")
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake_modules/")
@@ -24,8 +24,6 @@ find_package(Threads REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(LibRaw REQUIRED)
 find_package(USB1 REQUIRED)
-find_package(TIFF REQUIRED)
-find_package(TIFFXX REQUIRED)
 
 include(CMakeCommon)
 include(CheckStructHasMember)
@@ -40,6 +38,18 @@ CHECK_STRUCT_HAS_MEMBER("libraw_imgother_t" SensorTemperature "libraw/libraw_typ
 if (HAVE_LIBRAW_SENSOR_TEMPERATURE)
   set(LIBRAW_SENSOR_TEMPERATURE 1)
   message(STATUS "Found SensorTemperature in 'libraw/libraw_types.h'")
+endif ()
+
+CHECK_STRUCT_HAS_MEMBER("libraw_metadata_common_t" CameraTemperature "libraw/libraw_types.h" HAVE_LIBRAW_CAMERA_TEMPERATURE2 LANGUAGE C)
+if (HAVE_LIBRAW_CAMERA_TEMPERATURE2)
+  set(LIBRAW_CAMERA_TEMPERATURE2 1)
+  message(STATUS "Found CameraTemperature in libraw_metadata_common_t 'libraw/libraw_types.h'")
+endif ()
+
+CHECK_STRUCT_HAS_MEMBER("libraw_metadata_common_t" SensorTemperature "libraw/libraw_types.h" HAVE_LIBRAW_SENSOR_TEMPERATURE2 LANGUAGE C)
+if (HAVE_LIBRAW_SENSOR_TEMPERATURE2)
+  set(LIBRAW_SENSOR_TEMPERATURE2 1)
+  message(STATUS "Found SensorTemperature in libraw_metadata_common_t 'libraw/libraw_types.h'")
 endif ()
 
 if (INDI_WEBSOCKET)
@@ -69,7 +79,6 @@ include_directories( ${CFITSIO_INCLUDE_DIR})
 include_directories( ${GPHOTO2_INCLUDE_DIR})
 include_directories( ${LibRaw_INCLUDE_DIR})
 include_directories( ${USB1_INCLUDE_DIRS})
-include_directories( ${TIFF_INCLUDE_DIR})
 
 ########### Gphoto ###########
 set(indigphoto_SRCS
@@ -87,7 +96,7 @@ SET_SOURCE_FILES_PROPERTIES(gphoto_readimage.cpp PROPERTIES COMPILE_FLAGS "-Wno-
 
 add_executable(indi_gphoto_ccd ${indigphoto_SRCS})
 
-target_link_libraries(indi_gphoto_ccd ${INDI_LIBRARIES} ${CFITSIO_LIBRARIES} ${GPHOTO2_LIBRARY} ${GPHOTO2_PORT_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} ${JPEG_LIBRARIES} ${LibRaw_LIBRARIES} ${ZLIB_LIBRARIES} ${TIFF_LIBRARY} ${TIFFXX_LIBRARY})
+target_link_libraries(indi_gphoto_ccd ${INDI_LIBRARIES} ${CFITSIO_LIBRARIES} ${GPHOTO2_LIBRARY} ${GPHOTO2_PORT_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} ${JPEG_LIBRARIES} ${LibRaw_LIBRARIES} ${ZLIB_LIBRARIES})
 
 if (HAVE_WEBSOCKET)
     target_link_libraries(indi_gphoto_ccd ${Boost_LIBRARIES})

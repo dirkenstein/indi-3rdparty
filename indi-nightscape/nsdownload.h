@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <thread>         // std::thread
 #include <condition_variable>
+#include "fitsio.h"
 
 typedef struct ns_readdata {
 	int nread;
@@ -18,6 +19,7 @@ typedef struct ns_readdata {
 
 
 struct img_params {
+	int   frame_type;
 	float exp;
 	float settemp;
 	float acttemp;
@@ -87,8 +89,9 @@ class NsDownload {
 		 void setFbase(const char * name);
 		 void nextImage(void);
 		 void setNumExp(int n);
-		 int getImgSeq(void);
+		 int  getImgSeq(void);
 		 void setExpDur(float exp);
+		 void setFrameType(int ft);
 		 void doDownload();
 		 void startThread();
 		 void stopThread();
@@ -99,6 +102,7 @@ class NsDownload {
 		int downloader();
 		int purgedownload(); 
 		unsigned char * getBuf();
+		int getBufSize();
 		size_t getBufImageSize();
 		void setImgWrite(bool w);
 		void freeBuf();
@@ -108,9 +112,12 @@ class NsDownload {
 		void setZeroReads(int zeroes);
 	private:
 
-	  void fitsheader(int x, int y, char * fbase, struct img_params * ip);
+		int fitsheader(fitsfile *fptr, char *fbase, struct img_params *ip);
 		int fulldownload(); 
 		bool getDoDownload();
+		void copydownload_kaf8300(unsigned char *buf, int xstart, int xlen, int xbin, int pad, int cooked);
+		void copydownload_kai10100(unsigned char *buf, int xstart, int xlen, int xbin, int pad, int cooked);
+		int get_max_x();
 		struct download_params dp;
 		struct img_params ip;
 	  ns_readdata_t  rdd;
