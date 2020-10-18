@@ -328,11 +328,7 @@ bool NightscapeCCD::initProperties()
         cap |= CCD_HAS_BAYER;
         IUSaveText(&BayerT[0], "0");
         IUSaveText(&BayerT[1], "0");
-        if (cn->getCamType() == kai10100 && dn->getBinning() == 1) {
-            IUSaveText(&BayerT[2], "GRBG");
-        } else {
-            IUSaveText(&BayerT[2], "BGGR");
-        }
+        IUSaveText(&BayerT[2], "BGGR");
     }
     SetCCDCapability(cap);
 
@@ -430,6 +426,11 @@ bool NightscapeCCD::StartExposure(float duration)
         PrimaryCCD.setPixelSize(5.4 * PrimaryCCD.getBinX(), 5.4 * PrimaryCCD.getBinY());
     } else {
         PrimaryCCD.setPixelSize(4.75 * PrimaryCCD.getBinX(), 4.75 * PrimaryCCD.getBinY());
+        if (framediv == 1) {
+            IUSaveText(&BayerT[2], "GRBG");
+        } else {
+            IUSaveText(&BayerT[2], "BGGR");
+        }
     }
     dn->setImgSize(m->getRawImgSize(zonestart, zonelen, framediv));
     dn->setFrameYBinning(framediv);

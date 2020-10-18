@@ -81,7 +81,7 @@ class NsDownload {
 		 }
 		 void setFrameYBinning(int  binning);
 		 void setFrameXBinning(int  binning);
-		 int  getBinning();
+
 		 void setSetTemp (float temp);
 		 void setActTemp(float temp);
 		 void setImgSize(int siz);

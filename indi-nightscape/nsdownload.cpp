@@ -20,10 +20,6 @@ void NsDownload::setFrameXBinning(int binning) {
 
 }
 
-int NsDownload::getBinning() {
-	return ctx->imgp->ybinning;
-}
-
 void NsDownload::setImgSize(int siz) {
 	rd->imgsz = siz;
 }
